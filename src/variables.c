@@ -456,6 +456,7 @@ EXPOSE_WEBKIT_VIEW_SETTINGS(enable_webaudio,             "enable-webaudio",     
 #if WEBKIT_CHECK_VERSION (1, 7, 90) // Documentation says 1.7.5, but it's not there.
 EXPOSE_WEBKIT_VIEW_SETTINGS(enable_3d_acceleration,       "enable-accelerated-compositing",            int)
 #endif
+EXPOSE_WEBKIT_VIEW_SETTINGS(developer_extras,             "enable-developer-extras",                   int)
 
 /* HTML5 Database settings */
 EXPOSE_WEBKIT_VIEW_SETTINGS(enable_database,              "enable-html5-database",                     int)
@@ -922,6 +923,7 @@ const struct var_name_to_ptr_t {
 #if WEBKIT_CHECK_VERSION (1, 7, 90) // Documentation says 1.7.5, but it's not there.
     { "enable_3d_acceleration", PTR_V_INT_GETSET(enable_3d_acceleration)},
 #endif
+    { "developer_extras",       PTR_V_INT_GETSET(developer_extras)},
     /* HTML5 Database settings */
     { "enable_database",        PTR_V_INT_GETSET(enable_database)},
     { "enable_local_storage",   PTR_V_INT_GETSET(enable_local_storage)},

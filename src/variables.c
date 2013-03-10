@@ -532,6 +532,7 @@ EXPOSE_WEBKIT_VIEW_SETTINGS(enable_3d_acceleration,       "enable-accelerated-co
 #if WEBKIT_CHECK_VERSION (1, 11, 1)
 EXPOSE_WEBKIT_VIEW_SETTINGS(enable_css_shaders,           "enable-css-shaders",                        int)
 #endif
+EXPOSE_WEBKIT_VIEW_SETTINGS(developer_extras,             "enable-developer-extras",                   int)
 
 /* HTML5 Database settings */
 EXPOSE_WEBKIT_VIEW_SETTINGS(enable_database,              "enable-html5-database",                     int)
@@ -1273,6 +1274,7 @@ const struct var_name_to_ptr_t {
 #if WEBKIT_CHECK_VERSION (1, 11, 1)
     { "enable_css_shaders",     PTR_V_INT_GETSET(enable_css_shaders)},
 #endif
+    { "developer_extras",       PTR_V_INT_GETSET(developer_extras)},
     /* HTML5 Database settings */
     { "enable_database",        PTR_V_INT_GETSET(enable_database)},
     { "enable_local_storage",   PTR_V_INT_GETSET(enable_local_storage)},

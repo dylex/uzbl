@@ -20,11 +20,11 @@ COVERAGE=$(shell which coverage)
 # --- configuration ends here ---
 
 ifeq ($(ENABLE_WEBKIT2),auto)
-ENABLE_WEBKIT2 := $(shell pkg-config --exists webkit2gtk-3.0 && echo yes)
+ENABLE_WEBKIT2 := $(shell pkg-config --exists webkit2gtk-3.0 javascriptcoregtk-3.0 && echo yes)
 endif
 
 ifeq ($(ENABLE_GTK3),auto)
-ENABLE_GTK3 := $(shell pkg-config --exists gtk+-3.0 && echo yes)
+ENABLE_GTK3 := $(shell pkg-config --exists gtk+-3.0 webkitgtk-3.0 javascriptcoregtk-3.0 && echo yes)
 endif
 
 ifeq ($(ENABLE_WEBKIT2),yes)

@@ -464,7 +464,7 @@ download_cb(WebKitWebView *web_view, WebKitDownload *download, gpointer user_dat
     }
 
     /* get a reasonable suggestion for a filename */
-    const gchar *suggested_filename;
+    const gchar *suggested_filename = NULL;
 #ifdef USE_WEBKIT2
     WebKitURIResponse *response;
     g_object_get(download, "network-response", &response, NULL);

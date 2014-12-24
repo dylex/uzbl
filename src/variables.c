@@ -1066,6 +1066,14 @@ expand_type (const gchar *str)
 #endif
 
 #ifdef USE_WEBKIT2
+#if !WEBKIT_CHECK_VERSION (2, 5, 1)
+#define HAVE_PAGE_VIEW_MODE
+#endif
+#else
+#define HAVE_PAGE_VIEW_MODE
+#endif
+
+#ifdef USE_WEBKIT2
 #if WEBKIT_CHECK_VERSION (2, 3, 2)
 #define HAVE_ENABLE_MEDIA_STREAM_API
 #endif
@@ -1081,6 +1089,16 @@ expand_type (const gchar *str)
 #endif
 #else
 #define HAVE_SPATIAL_NAVIGATION
+#endif
+
+#ifdef USE_WEBKIT2
+#if WEBKIT_CHECK_VERSION (1, 7, 2)
+#define HAVE_LOCAL_STORAGE_PATH
+#endif
+#else
+#if WEBKIT_CHECK_VERSION (1, 5, 2)
+#define HAVE_LOCAL_STORAGE_PATH
+#endif
 #endif
 
 /* Abbreviations to help keep the table's width humane. */
@@ -1213,7 +1231,9 @@ DECLARE_GETSET (int, enable_frame_flattening);
 #if WEBKIT_CHECK_VERSION (1, 9, 0)
 DECLARE_GETSET (int, enable_smooth_scrolling);
 #endif
+#ifdef HAVE_PAGE_VIEW_MODE
 DECLARE_GETSET (gchar *, page_view_mode);
+#endif
 #ifndef USE_WEBKIT2
 DECLARE_GETSET (int, transparent);
 #if WEBKIT_CHECK_VERSION (1, 3, 4)
@@ -1341,9 +1361,9 @@ DECLARE_GETSET (unsigned long long, app_cache_size);
 #endif
 DECLARE_GETSET (gchar *, web_database_directory);
 DECLARE_GETSET (unsigned long long, web_database_quota);
-#if WEBKIT_CHECK_VERSION (1, 5, 2)
-DECLARE_GETSET (gchar *, local_storage_path);
 #endif
+#ifdef HAVE_LOCAL_STORAGE_PATH
+DECLARE_GETSET (gchar *, local_storage_path);
 #endif
 #ifdef USE_WEBKIT2
 #if WEBKIT_CHECK_VERSION (1, 11, 92)
@@ -1366,6 +1386,7 @@ DECLARE_GETTER (gchar *, geometry);
 #ifdef HAVE_PLUGIN_API
 DECLARE_GETTER (gchar *, plugin_list);
 #endif
+DECLARE_GETTER (int, is_online);
 DECLARE_GETTER (int, WEBKIT_MAJOR);
 DECLARE_GETTER (int, WEBKIT_MINOR);
 DECLARE_GETTER (int, WEBKIT_MICRO);
@@ -1397,6 +1418,9 @@ struct _UzblVariablesPrivate {
     /* UI variables */
     gboolean status_top;
     gchar *status_background;
+#if GTK_CHECK_VERSION (3, 15, 0)
+    GtkCssProvider *status_background_provider;
+#endif
 
     /* Customization */
 #if WEBKIT_CHECK_VERSION (1, 9, 0)
@@ -1555,7 +1579,9 @@ uzbl_variables_private_new (GHashTable *table)
 #if WEBKIT_CHECK_VERSION (1, 9, 0)
         { "enable_smooth_scrolling",      UZBL_V_FUNC (enable_smooth_scrolling,                INT)},
 #endif
+#ifdef HAVE_PAGE_VIEW_MODE
         { "page_view_mode",               UZBL_V_FUNC (page_view_mode,                         STR)},
+#endif
 #ifndef USE_WEBKIT2
         { "transparent",                  UZBL_V_FUNC (transparent,                            INT)},
 #if WEBKIT_CHECK_VERSION (1, 3, 4)
@@ -1683,9 +1709,9 @@ uzbl_variables_private_new (GHashTable *table)
 #endif
         { "web_database_directory",       UZBL_V_FUNC (web_database_directory,                 STR)},
         { "web_database_quota",           UZBL_V_FUNC (web_database_quota,                     ULL)},
-#if WEBKIT_CHECK_VERSION (1, 5, 2)
-        { "local_storage_path",           UZBL_V_FUNC (local_storage_path,                     STR)},
 #endif
+#ifdef HAVE_LOCAL_STORAGE_PATH
+        { "local_storage_path",           UZBL_V_FUNC (local_storage_path,                     STR)},
 #endif
 #ifdef USE_WEBKIT2
 #if WEBKIT_CHECK_VERSION (1, 11, 92)
@@ -1708,6 +1734,7 @@ uzbl_variables_private_new (GHashTable *table)
 #ifdef HAVE_PLUGIN_API
         { "plugin_list",                  UZBL_C_FUNC (plugin_list,                            STR)},
 #endif
+        { "is_online",                    UZBL_C_FUNC (is_online,                              INT)},
         { "uri",                          UZBL_C_STRING (uzbl.state.uri)},
         { "embedded",                     UZBL_C_INT (uzbl.state.plug_mode)},
         { "WEBKIT_MAJOR",                 UZBL_C_FUNC (WEBKIT_MAJOR,                           INT)},
@@ -1749,7 +1776,11 @@ uzbl_variables_private_new (GHashTable *table)
 void
 uzbl_variables_private_free (UzblVariablesPrivate *priv)
 {
-    /* All members are deleted by the table's free function. */
+#if GTK_CHECK_VERSION (3, 15, 0)
+    g_object_unref (priv->status_background_provider);
+#endif
+
+    /* All other members are deleted by the table's free function. */
     g_free (priv);
 }
 
@@ -1861,6 +1892,12 @@ uzbl_variables_private_free (UzblVariablesPrivate *priv)
         return TRUE;                        \
     }
 
+#ifdef USE_WEBKIT2
+#if WEBKIT_CHECK_VERSION (1, 7, 2)
+static GObject *
+webkit_context ();
+#endif
+#endif
 static GObject *
 webkit_settings ();
 static GObject *
@@ -2058,7 +2095,33 @@ IMPLEMENT_SETTER (char *, status_background)
 
     gboolean parsed = FALSE;
 
-#if GTK_CHECK_VERSION (2, 91, 0)
+#if GTK_CHECK_VERSION (3, 15, 0)
+    GtkStyleContext *ctx = gtk_widget_get_style_context (widget);
+    GtkCssProvider *provider = gtk_css_provider_new ();
+    GError *err = NULL;
+    gchar *css_content = g_strdup_printf (
+        "* {\n"
+        "  background-color: %s;\n"
+        "}\n", status_background);
+    gtk_css_provider_load_from_data (provider,
+        css_content, -1, &err);
+    g_free (css_content);
+    if (!err) {
+        if (uzbl.variables->priv->status_background_provider) {
+            gtk_style_context_remove_provider (ctx, GTK_STYLE_PROVIDER (uzbl.variables->priv->status_background_provider));
+            g_object_unref (uzbl.variables->priv->status_background_provider);
+        }
+        /* Using a slightly higher priority here because the user set this
+         * manually and user CSS has already happened. */
+        gtk_style_context_add_provider (ctx, GTK_STYLE_PROVIDER (provider), GTK_STYLE_PROVIDER_PRIORITY_USER + 1);
+        uzbl.variables->priv->status_background_provider = provider;
+        parsed = TRUE;
+    } else {
+        uzbl_debug ("Failed to parse status_background color: '%s': %s\n", status_background, err->message);
+        g_object_unref (provider);
+        g_error_free (err);
+    }
+#elif GTK_CHECK_VERSION (2, 91, 0)
     GdkRGBA color;
     parsed = gdk_rgba_parse (&color, status_background);
     if (parsed) {
@@ -2505,6 +2568,7 @@ GOBJECT_GETSET (int, enable_smooth_scrolling,
                 webkit_settings (), "enable-smooth-scrolling")
 #endif
 
+#ifdef HAVE_PAGE_VIEW_MODE
 #ifdef USE_WEBKIT2
 #define page_view_mode_choices(call)   \
     call (WEBKIT_VIEW_MODE_WEB, "web") \
@@ -2536,6 +2600,7 @@ CHOICE_GETSET (page_view_mode_t, page_view_mode,
 #undef _webkit_web_view_set_page_view_mode
 
 #undef page_view_mode_choices
+#endif
 
 #ifndef USE_WEBKIT2
 GOBJECT_GETSET (int, transparent,
@@ -2934,7 +2999,14 @@ IMPLEMENT_SETTER (unsigned long long, web_database_quota)
 
     return TRUE;
 }
+#endif
 
+#ifdef USE_WEBKIT2
+#if WEBKIT_CHECK_VERSION (1, 7, 2)
+GOBJECT_GETSET (gchar *, local_storage_path,
+                webkit_context (), "local-storage-directory")
+#endif
+#else
 #if WEBKIT_CHECK_VERSION (1, 5, 2)
 GOBJECT_GETSET (gchar *, local_storage_path,
                 webkit_settings (), "html5-local-storage-database-path")
@@ -3062,6 +3134,12 @@ IMPLEMENT_GETTER (gchar *, plugin_list)
 #undef plugin_foreach
 
     return g_string_free (list, FALSE);
+}
+
+IMPLEMENT_GETTER (int, is_online)
+{
+    GNetworkMonitor *monitor = g_network_monitor_get_default ();
+    return g_network_monitor_get_network_available (monitor);
 }
 
 static void
@@ -3266,6 +3344,16 @@ IMPLEMENT_GETTER (int, PID)
 {
     return (int)getpid ();
 }
+
+#ifdef USE_WEBKIT2
+#if WEBKIT_CHECK_VERSION (1, 7, 2)
+GObject *
+webkit_context ()
+{
+    return G_OBJECT (webkit_web_view_get_context (uzbl.gui.web_view));
+}
+#endif
+#endif
 
 GObject *
 webkit_settings ()

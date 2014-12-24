@@ -312,16 +312,35 @@ as `KEY` and `many args` as `VALUE`.
       * Saves the favicon for the given URI to a path.
 * `css <COMMAND>`
   - Controls CSS settings in web pages. Supported subcommands include:
-    + `add <URI> <LOCATION> [BASE_URI] [WHITELIST] [BLACKLIST]`
-      * Adds a CSS file to the given page applied at the given location in the
-        page. WebKit1 only uses the URI parameter and only supports one extra
-        stylesheet at a time. For WebKit2, the location can be one of `all` or
-        `top_only`. For `top_only`, child frames do not use the stylesheet. The
-        base URI, if given, is used during CSS processing. The white and
-        blacklists are comma-separated URI patterns which must match the format
+    + `add <URI>` (WebKit1)
+    + `add <URI> [LOCATION] [BASE_URI] [WHITELIST] [BLACKLIST]` (WebKit2 < 2.5.1)
+    + `add <URI> [LOCATION] [LEVEL] [WHITELIST] [BLACKLIST]` (WebKit2 >= 2.5.1)
+      * Adds a CSS file to pages when loaded. WebKit1 only uses the URI
+        parameter and only supports one extra stylesheet at a time. For
+        WebKit2, the location can be one of `all` (the default) or `top_only`.
+        For `top_only`, child frames do not use the stylesheet. The base URI,
+        if given, is used during CSS processing (up to 2.5.1). The level can be
+        `user` (the default) or `author` and it is treated as if provided that
+        way (`author` is the website). The white and blacklists are
+        comma-separated URI patterns which must match the format
         `protocol://host/path` and may use `*` as a wildcard.
     + `clear`
       Clears all user-supplied stylesheets.
+* `script <COMMAND>` (WebKit2 >= 2.5.1)
+    + `add <URI> [LOCATION] [WHERE] [WHITELIST] [BLACKLIST]`
+      * Adds a JavaScript file to pages when loaded. The location can be either
+        `all` (the default) or `top_only` which indicates which frame(s) should
+        execute the code when a page is loaded. The code can either be added to
+        the `start` (the default) or `end` of loaded pages. The white and
+        blacklist arguments are the same format as `css add`.
+    + `clear`
+      Clears all user-supplied scripts.
+    + `listen <NAME>`
+      Listen to messages on a given message handler call. Accessible via
+      `window.webkit.messageHandlers.NAME.postMessage(value)` from the web
+      page. Events will be sent in the form `SCRIPT_MESSAGE <NAME> <MESSAGE>`.
+    + `ignore <NAME>`
+      Stop listening to names on the given message handler calls.
 * `scheme <SCHEME> {COMMAND}`
   - Registers a custom scheme handler for `uzbl`. The handler should accept a
     single argument for the URI to load and return HTML.
@@ -338,6 +357,14 @@ as `KEY` and `many args` as `VALUE`.
       * Returns the command for the item with the given name.
     + `list`
       * Returns the names of items in the menu as a JSON list.
+    The list of supported objects is:
+    + `document`
+    + `link`
+    + `image`
+    + `media`
+    + `editable` (WebKit2 >= 1.9.4)
+    + `scrollbar` (WebKit2 >= 1.11.4)
+    + `selection` (WebKit2 >= 2.7.1)
 
 #### Search
 
@@ -381,8 +408,8 @@ as `KEY` and `many args` as `VALUE`.
     + `get`
       * Returns `true` if the option is set for the scheme, `false` otherwise.
     + `set`
-      * Sets the option for the scheme.With WebKit2, be careful setting options
-        since they cannot (currently) be unset.
+      * Sets the option for the scheme. With WebKit2, be careful setting
+        options since they cannot (currently) be unset.
     + `unset` (WebKit1 only)
       * Unsets the option for the scheme.
 
@@ -731,7 +758,7 @@ variables are treated as strings.
     area.
 * `enable_smooth_scrolling` (boolean) (default: 0) (WebKit >= 1.9.0)
   - If non-zero, scrolling the page will be smoothed.
-* `page_view_mode` (enumeration) (default: `web`)
+* `page_view_mode` (enumeration) (default: `web`) (not in WebKit2 >= 2.5.1)
   - How to render content on a page. Acceptable values include:
     + `web`
       * Render content as a web page.
@@ -901,7 +928,7 @@ Note: In WebKit2, font sizes are in pixels, whereas WebKit1 uses points.
 * `web_database_quota` (size) (default: 5242880) (WebKit1 only)
   - The maximum size (in bytes) of web databases. (Note: It is unclear if this
     is a total quota or per-database quota.)
-* `local_storage_path` (string) (default: `$XDG_DATA_HOME/webkit/databases`) (WebKit1 >= 1.5.2)
+* `local_storage_path` (string) (default: `$XDG_DATA_HOME/webkit/databases`) (WebKit1 >= 1.5.2 or WebKit2 >= 1.7.2)
   - Where to store HTML5 `localStorage` data.
 * `disk_cache_directory` (string) (no default) (WebKit2 >= 1.11.92)
   - Where to store cache files.. Must be set before loading any pages to have
@@ -930,6 +957,8 @@ they are written as comments.
     `<width>x<height>+<xoffset>+<yoffset>` format.
 * `plugin_list` (string) (WebKit2 >= 1.11.4 or WebKit1 >= 1.3.8) (WebKit2 broken)
   - A JSON-formatted list describing loaded plugins.
+* `is_online` (boolean)
+  - If non-zero, a network is available (not necessarily the Internet).
 * `uri` (string)
   - The current top-level URI of the view.
 * `embedded` (boolean)
@@ -1155,6 +1184,8 @@ Handler scripts (`download_handler`, `scheme_handler`, `request_handler`,
   6. `modifiers`
     - The modifiers used for the navigation. This uses the same format as the
       `KEY_PRESS` and `KEY_RELEASE` events.
+  7. `is_gesture`
+    - `true` if the action was triggered by a gesture, `false` otherwise.
 
 * request handler
 
@@ -1397,6 +1428,9 @@ uzbl itself and will be emitted based on what is happening within uzbl-core.
   - Sent when the main rendering process crashed.
 * `WEB_PROCESS_STARTED` (WebKit2 only)
   - Sent when a new web process is started.
+* `SCRIPT_MESSAGE <NAME> <MESSAGE>` (WebKit2 >= 2.5.1)
+  - Sent when an injected web script sends a message to a listened message
+    handler.
 
 ##### Window
 

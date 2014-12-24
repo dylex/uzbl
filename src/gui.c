@@ -423,8 +423,9 @@ window_init ()
     gtk_window_set_title (GTK_WINDOW (uzbl.gui.main_window), "Uzbl");
     gtk_widget_set_name (uzbl.gui.main_window, "Uzbl");
 
-#if GTK_CHECK_VERSION (3, 0, 0)
-    /* TODO: Make into an option? */
+#if GTK_CHECK_VERSION (3, 0, 0) && !GTK_CHECK_VERSION (3, 13, 5)
+    /* TODO: Make into an option? Nope...it doesn't exist in 3.14 anymore
+     * because there are no resize grips whatsoever. */
     gtk_window_set_has_resize_grip (GTK_WINDOW (uzbl.gui.main_window), FALSE);
 #endif
 
@@ -720,7 +721,7 @@ typedef WebKitLoadEvent WebKitLoadStatus;
 
 static gboolean
 navigation_decision (WebKitWebPolicyDecision *decision, const gchar *uri, const gchar *src_frame,
-        const gchar *dest_frame, const gchar *type, guint button, guint modifiers);
+        const gchar *dest_frame, const gchar *type, guint button, guint modifiers, gboolean is_gesture);
 static gboolean
 request_decision (const gchar *uri, gpointer data);
 static void
@@ -745,13 +746,27 @@ decide_policy_cb (WebKitWebView *view, WebKitPolicyDecision *decision, WebKitPol
     case WEBKIT_POLICY_DECISION_TYPE_NEW_WINDOW_ACTION:
     {
         WebKitNavigationPolicyDecision *nav_decision = WEBKIT_NAVIGATION_POLICY_DECISION (decision);
+#if WEBKIT_CHECK_VERSION (2, 5, 2)
+        WebKitNavigationAction *action = webkit_navigation_policy_decision_get_navigation_action (nav_decision);
+        WebKitURIRequest *request = webkit_navigation_action_get_request (action);
+#define read_navigation_data(name) webkit_navigation_action_get_##name (action)
+#else
         WebKitURIRequest *request = webkit_navigation_policy_decision_get_request (nav_decision);
+#define read_navigation_data(name) webkit_navigation_policy_decision_get_##name (nav_decision)
+#endif
 
         const gchar *uri = webkit_uri_request_get_uri (request);
         const gchar *dest_frame = webkit_navigation_policy_decision_get_frame_name (nav_decision);
-        WebKitNavigationType type = webkit_navigation_policy_decision_get_navigation_type (nav_decision);
-        guint button = webkit_navigation_policy_decision_get_mouse_button (nav_decision);
-        guint modifiers = webkit_navigation_policy_decision_get_modifiers (nav_decision);
+        WebKitNavigationType type = read_navigation_data (navigation_type);
+        guint button = read_navigation_data (mouse_button);
+        guint modifiers = read_navigation_data (modifiers);
+        gboolean is_gesture =
+#if WEBKIT_CHECK_VERSION (2, 5, 2)
+            webkit_navigation_action_is_user_gesture (action)
+#else
+            FALSE
+#endif
+            ;
 
 #define navigation_type_choices(call)                                   \
     call (WEBKIT_NAVIGATION_TYPE_LINK_CLICKED, "link")                  \
@@ -776,7 +791,7 @@ decide_policy_cb (WebKitWebView *view, WebKitPolicyDecision *decision, WebKitPol
 #undef ENUM_TO_STRING
 #undef navigation_type_choices
 
-        return navigation_decision (decision, uri, "", dest_frame, type_str, button, modifiers);
+        return navigation_decision (decision, uri, "", dest_frame, type_str, button, modifiers, is_gesture);
     }
     case WEBKIT_POLICY_DECISION_TYPE_RESPONSE:
     {
@@ -978,7 +993,7 @@ navigation_decision_cb (WebKitWebView *view, WebKitWebFrame *frame,
     }
     gint modifiers = webkit_web_navigation_action_get_modifier_state (navigation_action);
 
-    return navigation_decision (policy_decision, uri, src_frame_name, target_frame_name, reason_str, button, modifiers);
+    return navigation_decision (policy_decision, uri, src_frame_name, target_frame_name, reason_str, button, modifiers, FALSE);
 }
 
 static gboolean
@@ -1172,7 +1187,7 @@ permission_cb (WebKitWebView *view, WebKitPermissionRequest *request, gpointer d
 
 #if WEBKIT_CHECK_VERSION (2, 3, 1)
 static gboolean
-make_tls_error (const gchar *host, GTlsCertificate *cert, GTlsCertificateFlags flags, void *webkit_2_3_1_hack = NULL);
+make_tls_error (const gchar *host, GTlsCertificate *cert, GTlsCertificateFlags flags, void *webkit_2_3_1_hack);
 
 #if WEBKIT_CHECK_VERSION (2, 5, 90)
 gboolean
@@ -1189,7 +1204,7 @@ tls_error_cb (WebKitWebView *view, gchar *uri, GTlsCertificate *cert, GTlsCertif
     }
 
     const gchar *host = soup_uri_get_host (soup_uri);
-    gboolean ret = make_tls_error (host, cert, flags);
+    gboolean ret = make_tls_error (host, cert, flags, NULL /* webkit 2.3.1 hack */);
     soup_uri_free (soup_uri);
 
     return ret;
@@ -1201,7 +1216,7 @@ tls_error_cb (WebKitWebView *view, GTlsCertificate *cert, GTlsCertificateFlags f
     UZBL_UNUSED (view);
     UZBL_UNUSED (data);
 
-    return make_tls_error (host, cert, flags);
+    return make_tls_error (host, cert, flags, NULL /* webkit 2.3.1 hack */);
 }
 #else
 gboolean
@@ -1235,8 +1250,9 @@ get_certificate_info (GTlsCertificate *cert);
 gboolean
 make_tls_error (const gchar *host, GTlsCertificate *cert, GTlsCertificateFlags flags, void *info)
 {
-    UZBL_UNUSED (view);
-    UZBL_UNUSED (data);
+#if WEBKIT_CHECK_VERSION (2, 5, 1)
+    UZBL_UNUSED (info);
+#endif
 
 #define tls_error_flags(call)                               \
     call (G_TLS_CERTIFICATE_UNKNOWN_CA, "unknown_ca")       \
@@ -1680,7 +1696,7 @@ decide_navigation (GString *result, gpointer data);
 
 gboolean
 navigation_decision (WebKitWebPolicyDecision *decision, const gchar *uri, const gchar *src_frame,
-        const gchar *dest_frame, const gchar *type, guint button, guint modifiers)
+        const gchar *dest_frame, const gchar *type, guint button, guint modifiers, gboolean is_gesture)
 {
     if (uzbl_variables_get_int ("frozen")) {
         make_policy (decision, ignore);
@@ -1708,6 +1724,7 @@ navigation_decision (WebKitWebPolicyDecision *decision, const gchar *uri, const 
         uzbl_commands_args_append (args, g_strdup (type));
         uzbl_commands_args_append (args, g_strdup_printf ("%d", button));
         uzbl_commands_args_append (args, get_modifier_mask (modifiers));
+        uzbl_commands_args_append (args, g_strdup (is_gesture ? "true" : "false"));
         g_object_ref (decision);
         uzbl_io_schedule_command (scheme_command, args, decide_navigation, decision);
     } else {

@@ -12,6 +12,7 @@ from .config import Config
 from uzbl.ext import PerInstancePlugin
 
 class Downloads(PerInstancePlugin):
+    CONFIG_SECTION = 'downloads'
 
     def __init__(self, uzbl):
         super(Downloads, self).__init__(uzbl)
@@ -83,4 +84,3 @@ class Downloads(PerInstancePlugin):
 
         # update the status bar variable
         self.update_download_section()
-

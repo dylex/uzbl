@@ -8,8 +8,8 @@ able to use the default configurations.
 
 ## COMMAND LINE
 
-For `uzbl-core`, a URI must now use the `--uri` flag; the first non-flag
-argument is no longer interpreted as a URI (this is to avoid confusion of what
+For `uzbl-core`, a URI must now be the first non-flag argument; the `--uri`
+flag is no longer interpreted as a URI (this is to avoid confusion of what
 should be loaded with `uzbl-core --uri page1 page2`).
 
 The `--embed` flag is now removed and the `--socket` flag has been renamed to
@@ -53,6 +53,27 @@ selection, secondary selection, or clipboard through use of `primary`,
 `secondary`, or `clipboard`.  The `primary` choice was previously
 known as `clipboard`.  The default behavior is now to copy to the
 actual clipboard, not the primary selection.
+
+## KEY BINDINGS
+
+`space` is no longer reported as a named special key but instead as a simple
+space character. Anything looking for `KEY_PRESS` event with `<space>` should
+be updated to look for `" "`
+
+The example event manager shipped with uzbl is stricter when parsing key bind
+events. In particular quote characters `['"]` are being interpreted.
+
+The bindings that was before written as
+```
+event MODE_BIND command <space> = spawn something.sh
+event MODE_BIND command 'p      = spawn other.sh
+```
+
+Is now written as
+```
+event MODE_BIND command " "  = spawn something.sh
+event MODE_BIND command "'p" = spawn other.sh
+```
 
 ## COMMANDS
 
@@ -171,7 +192,7 @@ major exception here).
 * `toggle_zoom_type`
   - *Change*: Removed.
   - *Rationale*: Unnecessary command.
-  - *Porting*: Use `toggle zoom_type`.
+  - *Porting*: Use `toggle zoom_text_only`.
 * `zoom_in`
   - *Change*: Removed
   - *Rationale*: Consolidated into the new `zoom` command.
@@ -308,3 +329,7 @@ for these events. Also check the event manager for built-in handlers.
     there's no sense in truncating data.
   - *Porting*: Use `double` as a type and check assumptions with `set`
     commands.
+* `MODE_CONFIG`
+  - *Change*: Removed `=` argument.
+  - *Rationale*: Matches the `set` command.
+  - *Porting*: Remove the `=` argument to the event.

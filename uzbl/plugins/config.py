@@ -15,6 +15,8 @@ class Config(PerInstancePlugin):
     hard to implement all needed methods either.
     """
 
+    CONFIG_SECTION = 'config'
+
     def __init__(self, uzbl):
         super(Config, self).__init__(uzbl)
 
@@ -106,4 +108,3 @@ class Config(PerInstancePlugin):
         # not sure it's needed, but safer for cyclic links
         self.data.clear()
         super(Config, self).cleanup()
-

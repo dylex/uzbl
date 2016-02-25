@@ -55,13 +55,13 @@ class Uzbl(object):
         msg = msg.strip()
 
         if self.opts.print_events:
-            print(('%s<-- %s' % ('  ' * self._depth, msg)))
+            self.logger.debug(('%s<-- %s' % ('  ' * self._depth, msg)))
 
         self.proto.push((msg+'\n').encode('utf-8'))
 
     def reply(self, cookie, response):
         if self.opts.print_events:
-            print(('%s<?- %s %s' % ('  ' * self._depth, cookie, response)))
+            self.logger.debug(('%s<?- %s %s' % ('  ' * self._depth, cookie, response)))
 
         self.proto.push(('REPLY-%s %s\n' % (cookie, response)).encode('utf-8'))
 
@@ -86,7 +86,7 @@ class Uzbl(object):
             if line:
                 self.logger.info('unrecognized message: %r', line)
                 if self.opts.print_events:
-                    print(('--- %s' % line))
+                    self.logger.debug(('--- %s' % line))
             return
 
         # Check event string elements
@@ -119,7 +119,7 @@ class Uzbl(object):
                 elems.append(str(args))
             if kargs:
                 elems.append(str(kargs))
-            print(('%s-?> %s %s' % ('  ' * self._depth, cookie, ' '.join(elems))))
+            self.logger.debug(('%s-?> %s %s' % ('  ' * self._depth, cookie, ' '.join(elems))))
 
         final_response = None
 
@@ -130,8 +130,8 @@ class Uzbl(object):
                     (response, args, kargs) = handler(final_response, *args, **kargs)
                     if response is not None:
                         final_response = response
-                except Exception:
-                    self.logger.error('error in request handler', exc_info=True)
+                except BaseException:
+                    self.logger.error('error in request handler for \'%s\'', request, exc_info=True)
                 self._depth -= 1
 
         if final_response is None:
@@ -150,7 +150,7 @@ class Uzbl(object):
                 elems.append(str(args))
             if kargs:
                 elems.append(str(kargs))
-            print(('%s--> %s' % ('  ' * self._depth, ' '.join(elems))))
+            self.logger.debug(('%s--> %s' % ('  ' * self._depth, ' '.join(elems))))
 
         if event == "INSTANCE_START" and args:
             assert not self.instance_start, 'instance already started'
@@ -172,8 +172,8 @@ class Uzbl(object):
             try:
                 handler(*args, **kargs)
 
-            except Exception:
-                self.logger.error('error in handler', exc_info=True)
+            except BaseException:
+                self.logger.error('error in handler for \'%s\'', event, exc_info=True)
 
             self._depth -= 1
 

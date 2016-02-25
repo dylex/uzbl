@@ -35,9 +35,7 @@
 #include "gui.h"
 #include "io.h"
 #include "setup.h"
-#ifndef USE_WEBKIT2
 #include "soup.h"
-#endif
 #include "type.h"
 #include "util.h"
 #include "variables.h"
@@ -76,27 +74,25 @@ uzbl_init (int *argc, char ***argv)
     /* Commandline arguments. */
     const GOptionEntry
     options[] = {
-        { "uri",            'u', 0, G_OPTION_ARG_STRING,       &uri,
-            "Uri to load at startup (equivalent to 'uzbl <uri>' after uzbl has launched)", "URI" },
-        { "verbose",        'v', 0, G_OPTION_ARG_NONE,         &verbose,
-            "Whether to print all messages or just errors.",                                                  NULL },
-        { "named",          'n', 0, G_OPTION_ARG_STRING,       &uzbl.state.instance_name,
-            "Name of the current instance (defaults to Xorg window id or random for GtkSocket mode)",         "NAME" },
-        { "config",         'c', 0, G_OPTION_ARG_STRING,       &config_file,
-            "Path to config file or '-' for stdin",                                                           "FILE" },
+        { "verbose",           'v', 0, G_OPTION_ARG_NONE,         &verbose,
+            "Whether to print all messages or just errors.",                                                 NULL },
+        { "named",             'n', 0, G_OPTION_ARG_STRING,       &uzbl.state.instance_name,
+            "Name of the current instance (defaults to Xorg window id or random for GtkSocket mode)",        "NAME" },
+        { "config",            'c', 0, G_OPTION_ARG_STRING,       &config_file,
+            "Path to config file or '-' for stdin",                                                          "FILE" },
         /* TODO: explain the difference between these two options */
-        { "xembed-socket",  's', 0, G_OPTION_ARG_INT,          &uzbl.state.xembed_socket_id,
-            "Xembed socket ID, this window should embed itself",                                              "SOCKET" },
-        { "connect-socket",  0,  0, G_OPTION_ARG_STRING_ARRAY, &connect_socket_names,
-            "Connect to server socket for event managing",                                                    "CSOCKET" },
-        { "print-events",   'p', 0, G_OPTION_ARG_NONE,         &print_events,
-            "Whether to print events to stdout.",                                                             NULL },
-        { "geometry",       'g', 0, G_OPTION_ARG_STRING,       &geometry,
-            "Set window geometry (format: 'WIDTHxHEIGHT+-X+-Y' or 'maximized')",                              "GEOMETRY" },
-        { "version",        'V', 0, G_OPTION_ARG_NONE,         &print_version,
-            "Print the version and exit",                                                                     NULL },
-        { "bug-info",       'B', 0, G_OPTION_ARG_NONE,         &bug_info,
-            "Print information for a bug report and exit",                                                    NULL },
+        { "xembed-socket",     's', 0, G_OPTION_ARG_INT,          &uzbl.state.xembed_socket_id,
+            "Xembed socket ID, this window should embed itself",                                             "SOCKET" },
+        { "connect-socket",     0,  0, G_OPTION_ARG_STRING_ARRAY, &connect_socket_names,
+            "Connect to server socket for event managing",                                                   "CSOCKET" },
+        { "print-events",      'p', 0, G_OPTION_ARG_NONE,         &print_events,
+            "Whether to print events to stdout.",                                                            NULL },
+        { "geometry",          'g', 0, G_OPTION_ARG_STRING,       &geometry,
+            "Set window geometry (format: 'WIDTHxHEIGHT+-X+-Y' or 'maximized')",                             "GEOMETRY" },
+        { "version",           'V', 0, G_OPTION_ARG_NONE,         &print_version,
+            "Print the version and exit",                                                                    NULL },
+        { "bug-info",          'B', 0, G_OPTION_ARG_NONE,         &bug_info,
+            "Print information for a bug report and exit",                                                   NULL },
         { NULL,      0, 0, 0, NULL, NULL, NULL }
     };
 
@@ -106,6 +102,14 @@ uzbl_init (int *argc, char ***argv)
     g_option_context_add_group (context, gtk_get_option_group (TRUE));
     g_option_context_parse (context, argc, argv, NULL);
     g_option_context_free (context);
+
+    if (*argc >= 2) {
+        uri = (*argv)[1];
+    }
+
+    if (*argc >= 3) {
+        fprintf (stderr, "Extra arguments to %s ignored\n", (*argv)[0]);
+    }
 
     /* Print bug information. */
     if (bug_info) {
@@ -122,23 +126,13 @@ uzbl_init (int *argc, char ***argv)
             WEBKIT_MAJOR_VERSION,
             WEBKIT_MINOR_VERSION,
             WEBKIT_MICRO_VERSION);
-#ifdef USE_WEBKIT2
-#define webkit_version(type) webkit_get_##type##_version ()
-#else
 #define webkit_version(type) webkit_##type##_version ()
-#endif
         printf ("WebKit run: %d.%d.%d\n",
             webkit_version (major),
             webkit_version (minor),
             webkit_version (micro));
 #undef webkit_version
-        printf ("WebKit2: %d\n",
-#ifdef USE_WEBKIT2
-            1
-#else
-            0
-#endif
-            );
+        printf ("WebKit2: %d\n", 0);
 #ifdef HAVE_LIBSOUP_CHECK_VERSION
         printf ("libsoup compile: %d.%d.%d\n",
             SOUP_MAJOR_VERSION,
@@ -171,26 +165,9 @@ uzbl_init (int *argc, char ***argv)
     }
 #endif
 
-#if USE_WEBKIT2
-#if WEBKIT_CHECK_VERSION (2, 3, 5)
-    /* Use this in the hopes that one day uzbl itself can be multi-threaded. */
-    WebKitWebContext *webkit_context = webkit_web_context_get_default ();
-    WebKitProcessModel model =
-#if WEBKIT_CHECK_VERSION (2, 3, 90)
-        WEBKIT_PROCESS_MODEL_MULTIPLE_SECONDARY_PROCESSES
-#else
-        WEBKIT_PROCESS_MODEL_ONE_SECONDARY_PROCESS_PER_WEB_VIEW
-#endif
-        ;
-    webkit_web_context_set_process_model (webkit_context, model);
-#endif
-#endif
-
     /* HTTP client. */
-#ifndef USE_WEBKIT2 /* FIXME: This seems important... */
     uzbl.net.soup_session = webkit_get_default_session ();
     uzbl_soup_init (uzbl.net.soup_session);
-#endif
 
     uzbl_io_init ();
     uzbl_js_init ();
@@ -199,13 +176,15 @@ uzbl_init (int *argc, char ***argv)
     uzbl_events_init ();
     uzbl_requests_init ();
 
-#ifndef USE_WEBKIT2
     uzbl_scheme_init ();
-#endif
 
     /* Initialize the GUI. */
     uzbl_gui_init ();
     uzbl_inspector_init ();
+
+#if WEBKIT_CHECK_VERSION (2, 9, 4)
+    uzbl_variables_setup_data_manager ();
+#endif
 
     /* Uzbl has now been started. */
     uzbl.state.started = TRUE;
@@ -237,6 +216,14 @@ uzbl_init (int *argc, char ***argv)
     /* Generate an event with a list of built in commands. */
     uzbl_commands_send_builtin_event ();
 
+    /* Set variables based on flags. */
+    if (verbose) {
+        uzbl_variables_set ("verbose", "1");
+    }
+    if (print_events) {
+        uzbl_variables_set ("print_events", "1");
+    }
+
     /* Load default config. */
     const gchar * const *default_command = default_config;
     while (default_command && *default_command) {
@@ -260,14 +247,6 @@ uzbl_init (int *argc, char ***argv)
         uzbl_events_send (PLUG_CREATED, NULL,
             TYPE_INT, gtk_plug_get_id (uzbl.gui.plug),
             NULL);
-    }
-
-    /* Set variables based on flags. */
-    if (verbose) {
-        uzbl_variables_set ("verbose", "1");
-    }
-    if (print_events) {
-        uzbl_variables_set ("print_events", "1");
     }
 
     /* Navigate to a URI if requested. */

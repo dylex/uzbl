@@ -7,49 +7,28 @@ include $(wildcard local.mk)
 # RUN_PREFIX : what the prefix is when the software is run. usually the same as PREFIX
 PREFIX     ?= /usr/local
 INSTALLDIR ?= $(DESTDIR)$(PREFIX)
-MANDIR     ?= $(INSTALLDIR)/share/man
-DOCDIR     ?= $(INSTALLDIR)/share/uzbl/docs
+SHAREDIR   ?= $(INSTALLDIR)/share
+MANDIR     ?= $(SHAREDIR)/man
+DOCDIR     ?= $(SHAREDIR)/uzbl/docs
+LIBDIR     ?= $(INSTALLDIR)/lib$(LIB_SUFFIX)/uzbl
 RUN_PREFIX ?= $(PREFIX)
 INSTALL    ?= install -p
 
 ENABLE_WEBKIT2 ?= no
 ENABLE_GTK3    ?= auto
 
-PYTHON   = python3
+PYTHON  ?= python3
 
 # --- configuration ends here ---
-
-ifeq ($(ENABLE_WEBKIT2),auto)
-ENABLE_WEBKIT2 := $(shell pkg-config --exists webkit2gtk-4.0 && echo yes)
-ifneq ($(ENABLE_WEBKIT2),yes)
-ENABLE_WEBKIT2 := $(shell pkg-config --exists webkit2gtk-3.0 && echo yes)
-endif
-endif
-
-ifeq ($(ENABLE_WEBKIT2),yes)
-HAS_WEBKIT2_4 := $(shell pkg-config --exists webkit2gtk-4.0 && echo yes)
-ifeq ($(HAS_WEBKIT2_4),yes)
-WEBKIT2_VER := 4.0
-else
-WEBKIT2_VER := 3.0
-endif
-endif
 
 ifeq ($(ENABLE_GTK3),auto)
 ENABLE_GTK3 := $(shell pkg-config --exists gtk+-3.0 && echo yes)
 endif
 
-ifeq ($(ENABLE_WEBKIT2),yes)
-REQ_PKGS += 'webkit2gtk-$(WEBKIT2_VER) >= 1.2.4' javascriptcoregtk-$(WEBKIT2_VER)
-CPPFLAGS += -DUSE_WEBKIT2
-# WebKit2 requires GTK3
-ENABLE_GTK3 := yes
-else
 ifeq ($(ENABLE_GTK3),yes)
 REQ_PKGS += 'webkitgtk-3.0 >= 1.2.4' javascriptcoregtk-3.0
 else
 REQ_PKGS += 'webkit-1.0 >= 1.2.4' javascriptcoregtk-1.0
-endif
 endif
 
 ifeq ($(ENABLE_GTK3),yes)
@@ -67,18 +46,11 @@ ARCH := $(shell uname -m)
 
 COMMIT_HASH := $(shell ./misc/hash.sh)
 
-CPPFLAGS += -D_XOPEN_SOURCE=500 -DARCH=\"$(ARCH)\" -DCOMMIT=\"$(COMMIT_HASH)\"
+CPPFLAGS += -D_XOPEN_SOURCE=500 -DARCH=\"$(ARCH)\" -DCOMMIT=\"$(COMMIT_HASH)\" -DLIBDIR=\"$(LIBDIR)\"
 
 HAVE_LIBSOUP_VERSION := $(shell pkg-config --exists 'libsoup-2.4 >= 2.41.1' && echo yes)
 ifeq ($(HAVE_LIBSOUP_VERSION),yes)
 CPPFLAGS += -DHAVE_LIBSOUP_CHECK_VERSION
-endif
-
-ifeq ($(ENABLE_WEBKIT2),yes)
-HAVE_WEBKIT2_TLS_API := $(shell pkg-config --exists 'webkit2gtk-$(WEBKIT2_VER) >= 2.3.1' && echo yes)
-ifeq ($(HAVE_WEBKIT2_TLS_API),yes)
-REQ_PKGS += gnutls
-endif
 endif
 
 PKG_CFLAGS := $(shell pkg-config --cflags $(REQ_PKGS))
@@ -101,7 +73,10 @@ SOURCES := \
     util.c \
     uzbl-core.c \
     variables.c \
-    3p/async-queue-source/rb-async-queue-watch.c
+    3p/async-queue-source/rb-async-queue-watch.c \
+    cookie-jar.c \
+    scheme-request.c \
+    soup.c
 
 HEADERS := \
     comm.h \
@@ -121,24 +96,17 @@ HEADERS := \
     uzbl-core.h \
     variables.h \
     webkit.h \
-    3p/async-queue-source/rb-async-queue-watch.h
-
-ifneq ($(ENABLE_WEBKIT2),yes)
-SOURCES += \
-    cookie-jar.c \
-    scheme-request.c \
-    soup.c
-HEADERS += \
+    3p/async-queue-source/rb-async-queue-watch.h \
     cookie-jar.h \
     scheme-request.h \
     soup.h
-endif
 
-SRC  = $(addprefix src/,$(SOURCES))
-HEAD = $(addprefix src/,$(HEADERS))
-OBJ  = $(foreach obj, $(SRC:.c=.o),  $(obj))
-LOBJ = $(foreach obj, $(SRC:.c=.lo), $(obj))
-PY   = $(wildcard uzbl/*.py uzbl/plugins/*.py)
+SRC   = $(addprefix src/,$(SOURCES))
+HEAD  = $(addprefix src/,$(HEADERS))
+OBJ   = $(foreach obj, $(SRC:.c=.o),  $(obj))
+LOBJ  = $(foreach obj, $(SRC:.c=.lo), $(obj))
+PY    = $(wildcard uzbl/*.py uzbl/plugins/*.py)
+ICONS = icons/32x32.png icons/48x48.png icons/64x64.png icons/96x96.png
 
 all: uzbl-browser
 
@@ -148,17 +116,20 @@ ${OBJ}: ${HEAD}
 
 uzbl-core: ${OBJ}
 
-uzbl-browser: uzbl-core uzbl-event-manager uzbl-browser.1 uzbl.desktop bin/uzbl-browser
+uzbl-browser: uzbl-core uzbl-event-manager uzbl-browser.1 uzbl-core.desktop uzbl-tabbed.desktop bin/uzbl-browser
 
 uzbl-browser.1: uzbl-browser.1.in
 	sed 's#@PREFIX@#$(PREFIX)#' < uzbl-browser.1.in > uzbl-browser.1
 
-uzbl.desktop: uzbl.desktop.in
-	sed 's#@PREFIX@#$(PREFIX)#' < uzbl.desktop.in > uzbl.desktop
-
 bin/uzbl-browser: bin/uzbl-browser.in
 	sed 's#@PREFIX@#$(PREFIX)#' < bin/uzbl-browser.in > bin/uzbl-browser
 	chmod +x bin/uzbl-browser
+
+.PHONY: icons
+icons: ${ICONS}
+
+icons/%.png: examples/data/uzbl-logo.svg
+	convert -background none -resize $(shell echo $@ | grep -oE '[0-9]*x[0-9]*') $^ $@
 
 build: ${PY}
 	$(PYTHON) setup.py build
@@ -171,19 +142,19 @@ ${LOBJ}: ${SRC} ${HEAD}
 	$(CC) $(CPPFLAGS) $(CFLAGS) -fPIC -c src/$(@:.lo=.c) -o $@
 
 test-uzbl-core: uzbl-core
-	./uzbl-core --uri http://www.uzbl.org --verbose
+	./uzbl-core http://www.uzbl.org --verbose
 
 test-uzbl-browser: uzbl-browser
-	./bin/uzbl-browser --uri http://www.uzbl.org --verbose
+	./bin/uzbl-browser http://www.uzbl.org --verbose
 
 test-uzbl-core-sandbox: sandbox uzbl-core sandbox-install-uzbl-core sandbox-install-example-data
-	./sandbox/env.sh uzbl-core --uri http://www.uzbl.org --verbose
+	./sandbox/env.sh uzbl-core http://www.uzbl.org --verbose
 	make DESTDIR=./sandbox uninstall
 	rm -rf ./sandbox/usr
 
 test-uzbl-browser-sandbox: sandbox uzbl-browser sandbox-install-uzbl-browser sandbox-install-example-data
 	./sandbox/env.sh ${PYTHON} -m uzbl.event_manager restart -navv &
-	./sandbox/env.sh uzbl-browser --uri http://www.uzbl.org --verbose
+	./sandbox/env.sh uzbl-browser http://www.uzbl.org --verbose
 	./sandbox/env.sh ${PYTHON} -m uzbl.event_manager stop -vv -o /dev/null
 	make DESTDIR=./sandbox uninstall
 	rm -rf ./sandbox/usr
@@ -205,6 +176,7 @@ clean:
 	rm -f $(OBJ) ${LOBJ}
 	rm -f uzbl.desktop
 	rm -f bin/uzbl-browser
+	rm -f uzbl-browser.1
 	find ./examples/ -name "*.pyc" -delete || :
 	find -name __pycache__ -type d -delete || :
 	rm -rf ./sandbox/
@@ -249,8 +221,9 @@ install-dirs:
 	[ -d "$(INSTALLDIR)/bin" ] || $(INSTALL) -d -m755 $(INSTALLDIR)/bin
 	[ -d "$(MANDIR)/man1" ] || $(INSTALL) -d $(MANDIR)/man1
 	[ -d "$(DOCDIR)" ] || $(INSTALL) -d $(DOCDIR)
-	[ -d "$(INSTALLDIR)/share/uzbl" ] || $(INSTALL) -d $(INSTALLDIR)/share/uzbl
-	[ -d "$(INSTALLDIR)/share/applications" ] || $(INSTALL) -d $(INSTALLDIR)/share/applications
+	[ -d "$(SHAREDIR)/uzbl" ] || $(INSTALL) -d $(SHAREDIR)/uzbl
+	[ -d "$(SHAREDIR)/applications" ] || $(INSTALL) -d $(SHAREDIR)/applications
+	[ -d "$(SHAREDIR)/appdata" ] || $(INSTALL) -d $(SHAREDIR)/appdata
 
 install-uzbl-core: uzbl-core install-dirs
 	$(INSTALL) -m644 docs/*.md $(DOCDIR)/
@@ -273,12 +246,22 @@ install-uzbl-browser: uzbl-browser install-dirs install-uzbl-core install-event-
 	$(INSTALL) -m755 bin/uzbl-browser $(INSTALLDIR)/bin/uzbl-browser
 	#sed 's#@PREFIX@#$(PREFIX)#g' < README.browser.md > README.browser.md
 	#$(INSTALL) -m644 README.browser.md $(DOCDIR)/README.browser.md
-	#sed 's#@PREFIX@#$(PREFIX)#g' < README.event-manager.md > README.event-manager.md
-	#$(INSTALL) -m644 README.event-manager.md $(DOCDIR)/README.event-manager.md
-	cp -rv examples $(INSTALLDIR)/share/uzbl/examples
-	chmod 755 $(INSTALLDIR)/share/uzbl/examples/data/scripts/*.sh $(INSTALLDIR)/share/uzbl/examples/data/scripts/*.py
-	$(INSTALL) -m644 uzbl.desktop $(INSTALLDIR)/share/applications/uzbl.desktop
+	$(INSTALL) -m644 README.event-manager.md $(DOCDIR)/README.event-manager.md
+	$(INSTALL) -m644 README.scripts.md $(DOCDIR)/README.scripts.md
+	cp -rv examples $(SHAREDIR)/uzbl/
+	$(INSTALL) -d $(SHAREDIR)/icons/hicolor/32x32/apps/
+	$(INSTALL) -m644 icons/32x32.png $(SHAREDIR)/icons/hicolor/32x32/apps/uzbl.png
+	$(INSTALL) -d $(SHAREDIR)/icons/hicolor/48x48/apps/
+	$(INSTALL) -m644 icons/48x48.png $(SHAREDIR)/icons/hicolor/48x48/apps/uzbl.png
+	$(INSTALL) -d $(SHAREDIR)/icons/hicolor/64x64/apps/
+	$(INSTALL) -m644 icons/64x64.png $(SHAREDIR)/icons/hicolor/64x64/apps/uzbl.png
+	$(INSTALL) -d $(SHAREDIR)/icons/hicolor/96x96/apps/
+	$(INSTALL) -m644 icons/96x96.png $(SHAREDIR)/icons/hicolor/96x96/apps/uzbl.png
+	chmod 755 $(SHAREDIR)/uzbl/examples/data/scripts/*.sh $(SHAREDIR)/uzbl/examples/data/scripts/*.py
+	$(INSTALL) -m644 uzbl-core.desktop $(SHAREDIR)/applications/uzbl-core.desktop
+	$(INSTALL) -m644 uzbl-tabbed.desktop $(SHAREDIR)/applications/uzbl-tabbed.desktop
 	$(INSTALL) -m644 uzbl-browser.1 $(MANDIR)/man1/uzbl-browser.1
+	$(INSTALL) -m644 uzbl.appdata.xml $(SHAREDIR)/appdata/uzbl.appdata.xml
 
 install-uzbl-tabbed: install-dirs
 	$(INSTALL) -m755 bin/uzbl-tabbed $(INSTALLDIR)/bin/uzbl-tabbed
@@ -294,5 +277,6 @@ install-example-data:
 uninstall:
 	rm -rf $(INSTALLDIR)/bin/uzbl-*
 	rm -rf $(MANDIR)/man1/uzbl-*
-	rm -rf $(INSTALLDIR)/share/uzbl
-	rm -rf $(INSTALLDIR)/share/applications/uzbl.desktop
+	rm -rf $(SHAREDIR)/uzbl
+	rm -rf $(SHAREDIR)/applications/uzbl-core.desktop
+	rm -rf $(SHAREDIR)/applications/uzbl-tabbed.desktop

@@ -36,6 +36,9 @@ set set_status      set status_message
 # Spawn path shortcuts. In spawn the first dir+path match is used in "dir1:dir2:dir3:executable"
 set scripts_dir      @data_home:@data_dirs:@prefix/share/uzbl/examples/data:scripts
 
+# Search case-insensitive by default
+search option case_insensitive
+
 # === Hardcoded handlers =====================================================
 
 set navigation_handler     spawn_sync @scripts_dir/scheme.py
@@ -47,7 +50,7 @@ set download_handler       spawn_sync @scripts_dir/download.sh
 
 #   What to do when a website wants to open a new window:
 # Open link in new window
-@on_event   NEW_WINDOW     spawn_sh 'uzbl-browser ${0:+-u "$0"}' %r
+@on_event   NEW_WINDOW     spawn_sh 'uzbl-browser ${0:-"$0"}' %r
 # Open in current window (also see the REQ_NEW_WINDOW event handler below)
 #@on_event   NEW_WINDOW     uri %s
 # Open in new tab. Other options are NEW_TAB_NEXT, NEW_BG_TAB and NEW_BG_TAB_NEXT.
@@ -101,11 +104,13 @@ set download_handler       spawn_sync @scripts_dir/download.sh
 # === Behaviour and appearance ===============================================
 
 # Custom CSS can be defined here, including link follower hint styles
-set stylesheet_uri file://@config_home/style.css
+css add file://@config_home/style.css
 
 # If WebKits builtin authentication dialog should be used, if enabling remember
 # to disable external authentication handlers
 set enable_builtin_auth 0
+
+set forward_keys      0
 
 set show_status       1
 set status_top        0
@@ -128,9 +133,11 @@ set status_section    <span foreground="orange">\@status_message</span>
 set selected_section  <span foreground="#606060">\@[\@SELECTED_URI]\@</span>
 
 set download_section  <span foreground="white">\@downloads</span>
+set proxy_section     <span foreground="cyan">\@[\@proxy_url]\@</span>
 
 set status_format       <span font_family="monospace">@mode_section @keycmd_section @progress_section @name_section @status_section @scroll_section @selected_section @download_section</span>
 set status_format_right <span font_family="monospace"><span foreground="#666">uri:</span> @uri_section</span>
+set status_format_right <span font_family="monospace"><span foreground="#666">proxy:</span> @proxy_section <span foreground="#666">uri:</span> @uri_section</span>
 
 set title_format_long \@keycmd_prompt \@raw_modcmd \@raw_keycmd \@TITLE - Uzbl browser <\@NAME> \@SELECTED_URI
 
@@ -144,7 +151,7 @@ set progress.pending
 
 # === Useragent setup ========================================================
 
-set useragent         Uzbl (Webkit @{WEBKIT_MAJOR}.@{WEBKIT_MINOR}) (@(+uname -sm)@ [@ARCH_UZBL])
+set useragent Mozilla/5.0 (X11; @(+uname -sm)@) AppleWebKit/602.1 (KHTML; like Gecko) Uzbl/@COMMIT
 
 # === Configure cookie blacklist =============================================
 
@@ -164,7 +171,9 @@ set cookie_policy always
 # === Proxy configuration  ===================================================
 
 # Direct uzbl at a proxy service (ex. privoxy)
-# set proxy_url http://localhost:8118
+# The trailing '#privoxy' part is for displaying purposes only (see proxy_section).
+# Apparently it is ignored as far as actual operation is concerned.
+# set proxy_url http://localhost:8118#privoxy
 
 # === Key binding configuration ==============================================
 # --- Internal modmapping and ignoring ---------------------------------------
@@ -172,7 +181,6 @@ set cookie_policy always
 #modmap <From>          <To>
 @modmap <Control>       <Ctrl>
 @modmap <ISO_Left_Tab>  <Shift-Tab>
-@modmap <space>         <Space>
 @modmap <KP_Enter>      <Enter>
 
 #ignore_key <glob>
@@ -183,11 +191,11 @@ set cookie_policy always
 
 # --- Bind aliases -----------------------------------------------------------
 
-# event BIND <bind cmd> = <command>
-set bind      event MODE_BIND global
-
 # event MODE_BIND <mode> <bind cmd> = <command>
 set mode_bind event MODE_BIND
+
+# event BIND <bind cmd> = <command>
+set bind      @mode_bind global
 
 # Insert mode binding alias
 set ibind     @mode_bind insert
@@ -227,6 +235,7 @@ set ebind     @mode_bind global,-insert
 @ebind <Up>          = event HISTORY_PREV
 @ebind <Down>        = event HISTORY_NEXT
 @ebind <Ctrl>r<search:>_ = event HISTORY_SEARCH %s
+set history_disable_easter_egg 1
 # Keycmd injection/append examples.
 #@ebind  <Ctrl>su = event INJECT_KEYCMD \@uri
 #@ebind  <Ctrl>st = event INJECT_KEYCMD \@title
@@ -262,10 +271,10 @@ set ebind     @mode_bind global,-insert
 @cbind  <End>        = scroll vertical end
 @cbind  ^            = scroll horizontal begin
 @cbind  $            = scroll horizontal end
-@cbind  <Space>      = scroll vertical end
-@cbind  G<Go To:>_   = scroll vertical %r!
+@cbind  " "          = scroll vertical 100%
+@cbind  G<"Go To":>_   = scroll vertical %r!
 # The first '_' is literal, so type '_G' to trigger this binding.
-@cbind  _G<Go To:>_  = scroll horizontal %r!
+@cbind  _G<"Go To":>_  = scroll horizontal %r!
 
 # Frozen binding
 @cbind  <Shift><Ctrl>F  = toggle frozen
@@ -290,11 +299,13 @@ set ebind     @mode_bind global,-insert
 @cbind  t   = toggle show_status
 
 # Page searching binds
-@cbind  /*  = search find %s
-@cbind  ?*  = search rfind %s
+@cbind  /*                           = search find %s
+@cbind  <Ctrl>/<search:>_            = search find %s
+@cbind  ?*                           = search rfind %s
+@cbind  <Ctrl>?<'reverse search':>_  = search rfind %s
 # Jump to next and previous items
-@cbind  n   = search find
-@cbind  N   = search rfind
+@cbind  n   = search next
+@cbind  N   = search prev
 
 # Print pages to a printer
 @cbind  <Ctrl>p = hardcopy page
@@ -356,12 +367,12 @@ set ebind     @mode_bind global,-insert
 # Go to the page in clipboard
 @cbind  P   = spawn_sh 'echo "uri $(xclip -selection clipboard -o | sed s/\\\@/%40/g)" > "$UZBL_FIFO"'
 # Start a new uzbl instance from the page in primary selection
-@cbind  'p  = spawn_sh 'echo "event REQ_NEW_WINDOW $(xclip -o)" > "$UZBL_FIFO"'
+@cbind  "'p"  = spawn_sh 'echo "event REQ_NEW_WINDOW $(xclip -o)" > "$UZBL_FIFO"'
 # paste primary selection into keycmd at the cursor position
 @bind <Shift><Insert> = spawn_sh 'echo "event INJECT_KEYCMD $(xclip -o | sed s/\\\@/%40/g)" > "$UZBL_FIFO"'
 
 # Bookmark inserting binds
-@cbind <Ctrl>m<tags:>_  = spawn_sh 'echo "$UZBL_URI $0" >> "@data_home/bookmarks"' '%s'
+@cbind <Ctrl>m<tags:>_  = spawn_sh 'echo "$UZBL_URI	$0" >> "@data_home/bookmarks"' '%s'
 # Or use a script to insert a bookmark.
 @cbind  M  = spawn @scripts_dir/insert_bookmark.sh
 
@@ -398,18 +409,19 @@ set follow_hint_keys 0123456789
 #   fL -> take the url and navigate directly to it
 #   FL -> copy the url to the clipboard
 @cbind  fl*  = spawn @scripts_dir/follow.sh \@< uzbl.follow.followLinks("\@follow_hint_keys", "%s", 'click') >\@
-@cbind  Fl*  = spawn @scripts_dir/follow.sh \@< uzbl.follow.followLinks("\@follow_hint_keys", "%s", 'newwindow') >\@
+@cbind  Fl*  = spawn @scripts_dir/follow.sh \@< uzbl.follow.followLinks("\@follow_hint_keys", "%s", 'newwindow') >\@ newwindow
 @cbind  fL*  = spawn @scripts_dir/follow.sh \@< uzbl.follow.followLinks("\@follow_hint_keys", "%s", 'returnuri') >\@ set
 @cbind  FL*  = spawn @scripts_dir/follow.sh \@< uzbl.follow.followLinks("\@follow_hint_keys", "%s", 'returnuri') >\@ clipboard
 @cbind  fi   = spawn @scripts_dir/go_input.sh
 
 # follow selected link:
+# NOTE "selected" refers to marked text (e.g. via mouse or search), not by simply "tabbing" to a certain link.
 #   fs -> emulate a click on the link
 #   Fs -> open in a new window
 #   fS -> take the url and navigate directly to it
 #   FS -> copy the url to the clipboard
 @cbind  fs  = spawn @scripts_dir/follow.sh \@< uzbl.follow.followSelection('click') >\@
-@cbind  fS  = spawn @scripts_dir/follow.sh \@< uzbl.follow.followSelection('newwindow') >\@
+@cbind  fS  = spawn @scripts_dir/follow.sh \@< uzbl.follow.followSelection('newwindow') >\@ newwindow
 @cbind  Fs  = spawn @scripts_dir/follow.sh \@< uzbl.follow.followSelection('returnuri') >\@ set
 @cbind  FS  = spawn @scripts_dir/follow.sh \@< uzbl.follow.followSelection('returnuri') >\@ clipboard
 
@@ -419,7 +431,7 @@ set follow_hint_keys 0123456789
 #   fT -> take the url and navigate directly to it
 #   FT -> copy the url to the clipboard
 @cbind  ft*  = spawn @scripts_dir/follow.sh \@< uzbl.follow.followTextContent("%s", 'click') >\@
-@cbind  fT*  = spawn @scripts_dir/follow.sh \@< uzbl.follow.followTextContent("%s", 'newwindow') >\@
+@cbind  fT*  = spawn @scripts_dir/follow.sh \@< uzbl.follow.followTextContent("%s", 'newwindow') >\@ newwindow
 @cbind  Ft*  = spawn @scripts_dir/follow.sh \@< uzbl.follow.followTextContent("%s", 'returnuri') >\@ set
 @cbind  FT*  = spawn @scripts_dir/follow.sh \@< uzbl.follow.followTextContent("%s", 'returnuri') >\@ clipboard
 
@@ -458,9 +470,9 @@ set formfiller spawn @scripts_dir/formfiller.sh
 
 # Preset loading
 set preset event PRESET_TABS
-@cbind  gs<preset save:>_   = @preset save %s
-@cbind  glo<preset load:>_  = @preset load %s
-@cbind  gd<preset del:>_    = @preset del %s
+@cbind  gs<"preset save":>_   = @preset save %s
+@cbind  glo<"preset load":>_  = @preset load %s
+@cbind  gd<"preset del":>_    = @preset del %s
 # This doesn't work right now.
 #@cbind  gli                 = @preset list
 
@@ -483,28 +495,28 @@ set insert   @mode_config insert
 set stack    @mode_config stack
 
 # Command mode config.
-@command  keycmd_style        = foreground="red"
-@command  status_background   = #202020
-@command  mode_indicator      = Cmd
-@command  keycmd_events       = 1
-@command  forward_keys        = 0
-@command  modcmd_updates      = 1
+@command  keycmd_style        foreground="red"
+@command  status_background   #202020
+@command  mode_indicator      Cmd
+@command  keycmd_events       1
+@command  forward_keys        0
+@command  modcmd_updates      1
 
 # Insert mode config.
-@insert   status_background   = #303030
-@insert   mode_indicator      = Ins
-@insert   forward_keys        = 1
-@insert   keycmd_events       = 0
-@insert   modcmd_updates      = 0
+@insert   status_background   #303030
+@insert   mode_indicator      Ins
+@insert   forward_keys        1
+@insert   keycmd_events       0
+@insert   modcmd_updates      0
 
 # Multi-stage-binding mode config.
-@stack    keycmd_style        = foreground="red"
-@stack    status_background   = #202020
-@stack    mode_indicator      = Bnd
-@stack    prompt_style        = foreground="#888" weight="light"
-@stack    keycmd_events       = 1
-@stack    modcmd_updates      = 1
-@stack    forward_keys        = 0
+@stack    keycmd_style        foreground="red"
+@stack    status_background   #202020
+@stack    mode_indicator      Bnd
+@stack    prompt_style        foreground="#888" weight="light"
+@stack    keycmd_events       1
+@stack    modcmd_updates      1
+@stack    forward_keys        0
 
 set default_mode command
 

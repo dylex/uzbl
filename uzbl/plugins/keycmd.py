@@ -225,6 +225,8 @@ class Keylet(object):
 
 
 class KeyCmd(PerInstancePlugin):
+    CONFIG_SECTION = 'keycmd'
+
     def __init__(self, uzbl):
         '''Export functions and connect handlers to events.'''
         super(KeyCmd, self).__init__(uzbl)
@@ -301,7 +303,7 @@ class KeyCmd(PerInstancePlugin):
         split = splitquoted(map)
 
         if not split or len(split) > 2:
-            raise Exception('Invalid modmap arugments: %r' % map)
+            raise Exception('Invalid modmap arguments: %r' % map)
 
         self.add_modmap(*split)
 
@@ -507,6 +509,3 @@ class KeyCmd(PerInstancePlugin):
 
         self.keylet.set_cursor_pos(args[0])
         self.update_event(set(), self.keylet, False)
-
-# vi: set et ts=4:
-

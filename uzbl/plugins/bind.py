@@ -280,6 +280,8 @@ class Bind(object):
 
 
 class BindPlugin(PerInstancePlugin):
+    CONFIG_SECTION = 'bind'
+
     def __init__(self, uzbl):
         '''Export functions and connect handlers to events.'''
         super(BindPlugin, self).__init__(uzbl)
@@ -373,7 +375,7 @@ class BindPlugin(PerInstancePlugin):
         modes = args[0].split(',')
         for i, g in enumerate(args[1:]):
             if g == '=':
-                glob = args.raw(1, i)
+                glob = ' '.join(args[1:i+1])
                 command = args.raw(i+2)
                 break
         else:
@@ -458,7 +460,5 @@ class BindPlugin(PerInstancePlugin):
         # Return to the previous mode if the KEYCMD_EXEC keycmd doesn't match any
         # binds in the stack mode.
         if on_exec and not mod_cmd and depth and depth == bindlet.depth:
-            config = Config[uzbl]
+            config = Config[self.uzbl]
             del config['mode']
-
-# vi: set et ts=4:
